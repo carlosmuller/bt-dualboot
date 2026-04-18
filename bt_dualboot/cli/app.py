@@ -84,6 +84,11 @@ def _opt_backup(value):
     return value
 
 
+def _opts_need_windows_registry(opts):
+    opt_backup = _opt_backup(opts.backup)
+    return opts.list or opt_backup is not None or opts.sync is not None or opts.sync_all
+
+
 @contextmanager
 def no_device_error_handler():
     try:
@@ -243,15 +248,16 @@ class Application:
                 print("...done")
 
     def run(self):
-        require_univocal_windows_location(user_selected_location=self._opts_win_mount_point())
-
         if self.opts.list_win_mounts:
             self.list_win_mounts()
+
+        opt_backup = _opt_backup(self.opts.backup)
+        if _opts_need_windows_registry(self.opts):
+            require_univocal_windows_location(user_selected_location=self._opts_win_mount_point())
 
         if self.opts.list:
             self.list_devices()
 
-        opt_backup = _opt_backup(self.opts.backup)
         if opt_backup is not None:
             self.backup(opt_backup)
 
@@ -262,15 +268,18 @@ class Application:
             self.sync_all()
 
 
-def parse_argv():
+def parse_argv(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+
     parser = _argv_parser()
-    if len(sys.argv) == 1:
+    if len(argv) == 0:
         parser.print_help()
         print()
         require_chntpw_package()
         return
 
-    opts = parser.parse_args()
+    opts = parser.parse_args(argv)
 
     if is_debug():
         print(f"argv: {opts}")
@@ -329,14 +338,20 @@ def parse_argv():
     return opts
 
 
-def main():
+def run_args(argv=None):
     require_linux()
-    opts = parse_argv()
+    opts = parse_argv(argv)
 
     if opts is None:
-        return
+        return 0
 
-    require_chntpw_package()
+    if _opts_need_windows_registry(opts):
+        require_chntpw_package()
 
     app = Application(opts)
     app.run()
+    return 0
+
+
+def main():
+    run_args()
