@@ -4,7 +4,12 @@ from contextlib import contextmanager
 # fmt: off
 from bt_dualboot.bt_linux.devices   import get_devices as get_linux_devices
 from bt_dualboot.bt_windows.devices import get_devices as get_windows_devices
-from bt_dualboot.bt_windows.convert import mac_to_reg_key, hex_string_to_reg_value
+from bt_dualboot.bt_windows.convert import (
+    int_to_dword_reg_value,
+    int_to_qword_reg_value,
+    mac_to_reg_key,
+    hex_string_to_reg_value,
+)
 from bt_dualboot.bluetooth_device   import BluetoothDevice
 # fmt: on
 
@@ -100,6 +105,9 @@ class BtSyncManager:
             r"ControlSet001\Services\BTHPORT\Parameters\Keys" + "\\" + mac_to_reg_key(device.adapter_mac)
         )
 
+    def _get_reg_device_section_key(self, device):
+        return self._get_reg_adapter_section_key(device) + "\\" + mac_to_reg_key(device.mac)
+
     def devices_both_synced(self):
         """
         !uses cached
@@ -114,7 +122,7 @@ class BtSyncManager:
         synced_devices = [
             index[mac][0]
             for mac in common_devices_macs
-            if index[mac][0].pairing_key == index[mac][1].pairing_key
+            if index[mac][0].pairing_fingerprint() == index[mac][1].pairing_fingerprint()
         ]
 
         return synced_devices
@@ -132,7 +140,7 @@ class BtSyncManager:
         needs_sync_devices = [
             index[mac][0]
             for mac in common_devices_macs
-            if index[mac][0].pairing_key != index[mac][1].pairing_key
+            if index[mac][0].pairing_fingerprint() != index[mac][1].pairing_fingerprint()
         ]
 
         return needs_sync_devices
@@ -187,10 +195,30 @@ class BtSyncManager:
         """
         for_import = {}
         for device in devices:
-            section_key = self._get_reg_adapter_section_key(device)
-            device_key = f'"{mac_to_reg_key(device.mac)}"'
-            pairing_key = hex_string_to_reg_value(device.pairing_key)
-            for_import[section_key] = {device_key: pairing_key}
+            if device.is_pairing_type_long_term_key():
+                section_key = self._get_reg_device_section_key(device)
+                section_data = {
+                    '"LTK"': hex_string_to_reg_value(device.pairing_data["Key"]),
+                    '"KeyLength"': int_to_dword_reg_value(device.pairing_data.get("EncSize", 16)),
+                    '"EDIV"': int_to_dword_reg_value(device.pairing_data.get("EDiv", 0)),
+                    '"ERand"': int_to_qword_reg_value(device.pairing_data.get("Rand", 0)),
+                }
+                optional_key_map = {
+                    "IRK": '"IRK"',
+                    "CSRK": '"CSRK"',
+                    "CSRKInbound": '"CSRKInbound"',
+                }
+                for data_key, registry_key in optional_key_map.items():
+                    if data_key in device.pairing_data:
+                        section_data[registry_key] = hex_string_to_reg_value(
+                            device.pairing_data[data_key]
+                        )
+                for_import[section_key] = section_data
+            else:
+                section_key = self._get_reg_adapter_section_key(device)
+                device_key = f'"{mac_to_reg_key(device.mac)}"'
+                pairing_key = hex_string_to_reg_value(device.pairing_key)
+                for_import[section_key] = {device_key: pairing_key}
 
         self.windows_registry.import_dict(for_import)
 
@@ -230,6 +258,8 @@ class BtSyncManager:
                     raise DeviceNotFoundError(f"Can't push {device_mac}! Not found on Windows!")
 
                 device_windows.pairing_key = device_linux.pairing_key
+                device_windows.pairing_type = device_linux.pairing_type
+                device_windows.pairing_data = device_linux.pairing_data
                 devices_for_update.append(device_windows)
 
             if dry_run is not True:

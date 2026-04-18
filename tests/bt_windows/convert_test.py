@@ -55,3 +55,23 @@ def test_hex_string_to_reg_value():
     hex_string = "A61B7F1BD9A35F3CF7E675EF2161A836"
     expected = "hex:a6,1b,7f,1b,d9,a3,5f,3c,f7,e6,75,ef,21,61,a8,36"
     assert hex_string_to_reg_value(hex_string) == expected
+
+
+def test_int_from_le_reg_value__hex():
+    assert int_from_le_reg_value("hex:34,12,00,00") == 4660
+
+
+def test_int_from_le_reg_value__dword():
+    assert int_from_le_reg_value("dword:00000010") == 16
+
+
+def test_int_from_le_reg_value__qword():
+    assert int_from_le_reg_value("hex(b):08,07,06,05,04,03,02,01") == 72623859790382856
+
+
+def test_int_to_dword_reg_value():
+    assert int_to_dword_reg_value(16) == "dword:00000010"
+
+
+def test_int_to_qword_reg_value():
+    assert int_to_qword_reg_value(72623859790382856) == "hex(b):08,07,06,05,04,03,02,01"

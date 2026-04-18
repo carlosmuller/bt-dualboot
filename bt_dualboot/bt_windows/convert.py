@@ -75,6 +75,46 @@ def hex_string_from_reg(hex_string_reg):
     return "".join(value.split(",")).upper()
 
 
+def _reg_value_type_and_value(reg_value):
+    value_type, value = reg_value.split(":", 1)
+    return value_type.lower(), value
+
+
+def _bytes_from_reg_value(reg_value):
+    value_type, value = _reg_value_type_and_value(reg_value)
+
+    if value_type == "dword":
+        return hex_string_to_pairs(value.upper())
+
+    if value_type in ["hex", "hex(b)"]:
+        return [pair.strip().upper() for pair in value.split(",") if pair.strip() != ""]
+
+    raise RuntimeError(f"unsupported registry value={reg_value}")
+
+
+def int_from_le_reg_value(reg_value):
+    """Convert little-endian Windows registry value to int.
+
+    Supports REG_BINARY/REG_QWORD byte lists and REG_DWORD values.
+    """
+    value_type, value = _reg_value_type_and_value(reg_value)
+
+    if value_type == "dword":
+        return int(value, 16)
+
+    pairs = _bytes_from_reg_value(reg_value)
+    return int("".join(pairs[::-1]), 16)
+
+
+def int_to_dword_reg_value(value):
+    return "dword:{:08x}".format(int(value))
+
+
+def int_to_qword_reg_value(value):
+    pairs = hex_string_to_pairs("{:016x}".format(int(value)))
+    return "hex(b):{}".format(",".join(pairs[::-1]))
+
+
 def hex_string_to_reg_value(hex_string):
     """Convert hex string to Windows registry value
     Args:
